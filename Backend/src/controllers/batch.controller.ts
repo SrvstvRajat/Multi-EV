@@ -53,56 +53,12 @@ const extractSmiles = (buffer: Buffer, filename: string): string[] => {
     .filter(Boolean);
 };
 
-// ── Helper: count sequences (kept for quick validation before extraction) ──────
-const countSequences = (buffer: Buffer, filename: string): number => {
-  return extractSmiles(buffer, filename).length;
-};
-
-// ── Helper: run SMILES through ML service in chunks of 50 ─────────────────────
-// const runPredictions = async (
-//   smilesList: string[]
-// ): Promise<PredictionResult[]> => {
-//   const ML_URL = process.env.ML_SERVICE_URL || "http://localhost:8000";
-//   const ML_TIMEOUT = parseInt(process.env.ML_TIMEOUT_MS || "30000", 10);
-//   const CHUNK_SIZE = 50; // matches the existing batch endpoint limit
-//   const results: PredictionResult[] = [];
-
-//   for (let i = 0; i < smilesList.length; i += CHUNK_SIZE) {
-//     const chunk = smilesList.slice(i, i + CHUNK_SIZE);
-//     try {
-//       const { data } = await axios.post(
-//         `${ML_URL}/predict/batch`,
-//         { smiles: chunk },
-//         { timeout: ML_TIMEOUT * 3 }
-//       );
-
-//       // data.predictions should be an array aligned with the chunk.
-//       // Adjust the key below if your ML service returns a different shape.
-//       chunk.forEach((smi, idx) => {
-//         results.push({
-//           smiles: smi,
-//           result: data.predictions?.[idx] ?? data[idx] ?? null,
-//         });
-//       });
-//     } catch (err: any) {
-//       // If a whole chunk fails, mark every SMILES in it as errored
-//       chunk.forEach((smi) => {
-//         results.push({
-//           smiles: smi,
-//           result: null,
-//           error: err?.message || "Prediction failed",
-//         });
-//       });
-//     }
-//   }
-
-//   return results;
-// };
 
 const runPredictions = async (smilesList: string[]): Promise<PredictionResult[]> => {
   const ML_URL = process.env.ML_SERVICE_URL || "http://localhost:8000";
-  const ML_TIMEOUT = parseInt(process.env.ML_TIMEOUT_MS || "3000000", 10);
-  const CHUNK_SIZE = 50;
+  // Override via ML_TIMEOUT_MS in .env.
+  const ML_TIMEOUT = parseInt(process.env.ML_TIMEOUT_MS || "300000", 10);
+  const CHUNK_SIZE = 50; // matches app.py BatchRequest max
   const results: PredictionResult[] = [];
 
   for (let i = 0; i < smilesList.length; i += CHUNK_SIZE) {
@@ -110,34 +66,42 @@ const runPredictions = async (smilesList: string[]): Promise<PredictionResult[]>
     try {
       const { data } = await axios.post(
         `${ML_URL}/predict/batch`,
-        { smiles: chunk },
+        { sequences: chunk },
         { timeout: ML_TIMEOUT * 3 }
       );
 
-      // Validate ML response before accepting it
-      if (!data.predictions || !Array.isArray(data.predictions)) {
+      if (!data.results || !Array.isArray(data.results)) {
         throw new Error("ML service returned unexpected response shape");
       }
 
-      chunk.forEach((smi, idx) => {
-        const pred = data.predictions[idx];
-
-        // Only accept if both required fields are present
-        if (pred?.predicted_class && typeof pred?.confidence === "number") {
-          results.push({ smiles: smi, result: pred });
+      chunk.forEach((seq, idx) => {
+        const item = data.results[idx];
+        if (item?.prediction && typeof item?.confidence === "number") {
+          results.push({
+            smiles: seq,
+            result: {
+              predicted_class: item.prediction,
+              confidence: item.confidence,
+              probabilities: item.probabilities ?? {},
+              sequence_length: item.sequence_length,
+            },
+          });
         } else {
-          results.push({ smiles: smi, result: null, error: "Incomplete prediction returned" });
+          results.push({
+            smiles: seq,
+            result: null,
+            error: item?.error || "Incomplete prediction returned",
+          });
         }
       });
 
     } catch (err: any) {
-      chunk.forEach((smi) => {
-        results.push({ smiles: smi, result: null, error: err.message || "Prediction failed" });
+      chunk.forEach((seq) => {
+        results.push({ smiles: seq, result: null, error: err.message || "Prediction failed" });
       });
     }
   }
 
-  // If EVERY single prediction failed, don't send an email at all — throw instead
   const allFailed = results.every((r) => r.result === null);
   if (allFailed) {
     throw new Error("All predictions failed — ML pipeline returned no valid results");
@@ -146,36 +110,22 @@ const runPredictions = async (smilesList: string[]): Promise<PredictionResult[]>
   return results;
 };
 
-// ── Helper: convert results array to CSV string ────────────────────────────────
-
-// const buildResultsCsv = (results: PredictionResult[]): string => {
-//   const header = ["smiles", "predicted_class", "confidence"];
-
-//   const escape = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-
-//   const rows = results.map(({ smiles, result, error }) => [
-//     escape(smiles),
-//     escape(result?.predicted_class ?? error ?? "ERROR"),
-//     escape(result?.confidence ?? ""),
-//   ]);
-
-//   return [header.map(escape), ...rows]
-//     .map((r) => r.join(","))
-//     .join("\n");
-// };
-
 
 const buildResultsCsv = (results: PredictionResult[]): string => {
-  const header = ["smiles", "predicted_class", "confidence"];
+  // sequence instead of smiles — this is a protein classifier, not chemistry
+  const header = ["sequence", "predicted_class", "confidence", "non_ev_prob", "milk_ev_prob", "plant_ev_prob", "error"];
   const escape = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
 
-  // Only include rows where prediction actually succeeded
-  const validResults = results.filter((r) => r.result !== null);
-
-  const rows = validResults.map(({ smiles, result }) => [
+  // Include ALL rows — failed ones get empty prediction fields and a filled error column
+  // so the user can see exactly which sequences didn't process rather than silently missing them
+  const rows = results.map(({ smiles, result, error }) => [
     escape(smiles),
-    escape(result!.predicted_class),
-    escape(result!.confidence),
+    escape(result?.predicted_class ?? ""),
+    escape(result?.confidence != null ? result.confidence : ""),
+    escape(result?.probabilities?.["Non-EV"] ?? ""),
+    escape(result?.probabilities?.["Milk-based EV"] ?? ""),
+    escape(result?.probabilities?.["Plant-based EV"] ?? ""),
+    escape(error ?? ""),
   ]);
 
   return [header.map(escape), ...rows]
@@ -184,6 +134,57 @@ const buildResultsCsv = (results: PredictionResult[]): string => {
 };
 
 
+
+const emailShell = (content: string) => `
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#EEF2EF;font-family:'Segoe UI',Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#EEF2EF;padding:40px 16px;">
+    <tr><td align="center">
+      <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;">
+ 
+        <!-- Header -->
+        <tr>
+          <td style="background:#16211C;border-radius:12px 12px 0 0;padding:28px 40px;text-align:center;">
+            <p style="margin:0 0 4px;font-size:11px;letter-spacing:0.2em;text-transform:uppercase;color:#1F9E88;font-weight:600;">
+              EV · MultiClass
+            </p>
+            <h1 style="margin:0;font-size:22px;font-weight:700;color:#F4F8F5;letter-spacing:-0.5px;">
+              MultiEV
+            </h1>
+            <p style="margin:6px 0 0;font-size:12px;color:#5F6E66;">
+              Extracellular Vesicle Protein Source Classifier
+            </p>
+          </td>
+        </tr>
+ 
+        <!-- Body -->
+        <tr>
+          <td style="background:#ffffff;padding:36px 40px;">
+            ${content}
+          </td>
+        </tr>
+ 
+        <!-- Footer -->
+        <tr>
+          <td style="background:#F4F8F5;border-radius:0 0 12px 12px;padding:20px 40px;text-align:center;border-top:1px solid #E2E8E4;">
+            <p style="margin:0;font-size:12px;color:#8A97A6;">
+              CoSyLab · IIIT Delhi &nbsp;·&nbsp;
+              <a href="mailto:bagler+multiev@iiitd.ac.in" style="color:#1F9E88;text-decoration:none;">
+                bagler+multiev@iiitd.ac.in
+              </a>
+            </p>
+          </td>
+        </tr>
+ 
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>
+`;
+ 
 // ── Helper: send submission confirmation to user ───────────────────────────────
 const sendUserConfirmation = async (
   transporter: nodemailer.Transporter,
@@ -193,36 +194,58 @@ const sendUserConfirmation = async (
   sequenceCount: number
 ) => {
   await transporter.sendMail({
-    from: `"multiev" <${process.env.SMTP_USER}>`,
+    from: `"MultiEV" <${process.env.SMTP_USER}>`,
     to: toEmail,
-    subject: "multiev — Batch Job Received ✅",
-    html: `
-      <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#f8fafc;padding:32px;border-radius:12px;">
-        <div style="background:linear-gradient(135deg,#2563eb,#7c3aed);padding:24px;border-radius:8px;text-align:center;margin-bottom:24px;">
-          <h1 style="color:#fff;margin:0;font-size:24px;">multiev</h1>
-          <p style="color:#bfdbfe;margin:8px 0 0;">multievicity Prediction Platform</p>
-        </div>
-
-        <h2 style="color:#1e293b;">Hello ${toName},</h2>
-        <p style="color:#475569;">Your batch prediction job has been <strong>successfully submitted</strong>.</p>
-
-        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:16px;margin:20px 0;">
-          <p style="margin:0 0 8px;color:#64748b;font-size:14px;">📄 <strong>File:</strong> ${filename}</p>
-          <p style="margin:0;color:#64748b;font-size:14px;">🧬 <strong>Sequences submitted:</strong> ${sequenceCount}</p>
-        </div>
-
-        <p style="color:#475569;">Our models are now processing your sequences. You will receive another email with your prediction results (CSV file) shortly.</p>
-
-        <p style="color:#94a3b8;font-size:13px;margin-top:32px;border-top:1px solid #e2e8f0;padding-top:16px;">
-          If you did not submit this request, please ignore this email or contact us at
-          <a href="mailto:bagler+multiev@iiitd.ac.in" style="color:#2563eb;">bagler+multiev@iiitd.ac.in</a>.
+    subject: "MultiEV — Batch Job Received",
+    html: emailShell(`
+      <h2 style="margin:0 0 8px;font-size:20px;font-weight:700;color:#16211C;">
+        Job received, ${toName}.
+      </h2>
+      <p style="margin:0 0 24px;font-size:15px;color:#5F6E66;line-height:1.6;">
+        Your batch prediction job has been successfully submitted and is now queued for processing.
+      </p>
+ 
+      <!-- Job summary card -->
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#F4F8F5;border:1px solid #E2E8E4;border-radius:8px;margin-bottom:24px;">
+        <tr>
+          <td style="padding:8px 20px;border-bottom:1px solid #E2E8E4;">
+            <p style="margin:0;font-size:11px;text-transform:uppercase;letter-spacing:0.15em;color:#8A97A6;">File</p>
+            <p style="margin:4px 0 0;font-size:14px;font-weight:600;color:#16211C;">${filename}</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:8px 20px;">
+            <p style="margin:0;font-size:11px;text-transform:uppercase;letter-spacing:0.15em;color:#8A97A6;">Sequences</p>
+            <p style="margin:4px 0 0;font-size:14px;font-weight:600;color:#16211C;">${sequenceCount}</p>
+          </td>
+        </tr>
+      </table>
+ 
+      <p style="margin:0 0 20px;font-size:14px;color:#5F6E66;line-height:1.6;">
+        The pipeline will embed each sequence using ProtT5-XL, apply RFE feature selection,
+        and classify using the stacked ensemble model. Results will be delivered as a CSV
+        attachment in a follow-up email.
+      </p>
+ 
+      <!-- What to expect -->
+      <div style="border-left:3px solid #1F9E88;padding:12px 16px;background:#F0FAF8;border-radius:0 6px 6px 0;margin-bottom:24px;">
+        <p style="margin:0;font-size:13px;color:#16211C;line-height:1.6;">
+          <strong>What to expect:</strong> each row in the results CSV will contain the
+          original sequence, its predicted class (<em>Non-EV</em>, <em>Milk-based EV</em>,
+          or <em>Plant-based EV</em>), confidence score, and per-class probabilities.
         </p>
       </div>
-    `,
+ 
+      <p style="margin:0;font-size:12px;color:#8A97A6;line-height:1.5;">
+        If you did not submit this request, please ignore this email or contact us at
+        <a href="mailto:bagler+multiev@iiitd.ac.in" style="color:#1F9E88;">bagler+multiev@iiitd.ac.in</a>.
+      </p>
+    `),
   });
 };
 
-// ── Helper: send prediction results CSV to user ────────────────────────────────
+
+
 const sendUserResults = async (
   transporter: nodemailer.Transporter,
   toEmail: string,
@@ -231,42 +254,53 @@ const sendUserResults = async (
   csvContent: string
 ) => {
   const resultFilename = filename.replace(/\.[^.]+$/, "_results.csv");
-
+ 
   await transporter.sendMail({
-    from: `"multiev" <${process.env.SMTP_USER}>`,
+    from: `"MultiEV" <${process.env.SMTP_USER}>`,
     to: toEmail,
-    subject: "multiev — Your Batch Prediction Results Are Ready 🎉",
-    html: `
-      <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#f8fafc;padding:32px;border-radius:12px;">
-        <div style="background:linear-gradient(135deg,#2563eb,#7c3aed);padding:24px;border-radius:8px;text-align:center;margin-bottom:24px;">
-          <h1 style="color:#fff;margin:0;font-size:24px;">multiev</h1>
-          <p style="color:#bfdbfe;margin:8px 0 0;">multievicity Prediction Platform</p>
-        </div>
-
-        <h2 style="color:#1e293b;">Hello ${toName}, your results are ready!</h2>
-        <p style="color:#475569;">
-          The batch prediction for <strong>${filename}</strong> has completed.
-          Please find your results attached as <strong>${resultFilename}</strong>.
-        </p>
-
-        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:16px;margin:20px 0;">
-          <p style="margin:0;color:#64748b;font-size:14px;">
-            📊 The CSV contains one row per SMILES with columns: 
-            <code>smiles</code>, <code>prediction</code>, <code>confidence</code>, and <code>error</code>.
-            Rows with a non-empty <code>error</code> column indicate sequences the model could not process.
-          </p>
-        </div>
-
-        <p style="color:#475569;">
-          If you have questions about your results, feel free to reach out.
-        </p>
-
-        <p style="color:#94a3b8;font-size:13px;margin-top:32px;border-top:1px solid #e2e8f0;padding-top:16px;">
-          Contact us at
-          <a href="mailto:bagler+multiev@iiitd.ac.in" style="color:#2563eb;">bagler+multiev@iiitd.ac.in</a>.
-        </p>
-      </div>
-    `,
+    subject: "MultiEV — Your Prediction Results Are Ready",
+    html:emailShell(`
+      <h2 style="margin:0 0 8px;font-size:20px;font-weight:700;color:#16211C;">
+        Results ready, ${toName}.
+      </h2>
+      <p style="margin:0 0 24px;font-size:15px;color:#5F6E66;line-height:1.6;">
+        The batch prediction for <strong style="color:#16211C;">${filename}</strong> has completed.
+        Your results are attached as <strong style="color:#16211C;">${resultFilename}</strong>.
+      </p>
+ 
+      <!-- Result file card -->
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#F0FAF8;border:1px solid #A7D9D0;border-radius:8px;margin-bottom:24px;">
+        <tr>
+          <td style="padding:16px 20px;">
+            <p style="margin:0 0 4px;font-size:11px;text-transform:uppercase;letter-spacing:0.15em;color:#1F9E88;font-weight:600;">
+              Attached File
+            </p>
+            <p style="margin:0;font-size:15px;font-weight:700;color:#16211C;">${resultFilename}</p>
+          </td>
+        </tr>
+      </table>
+ 
+      <!-- CSV column guide -->
+      <p style="margin:0 0 10px;font-size:13px;font-weight:600;color:#16211C;">CSV columns</p>
+      <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #E2E8E4;border-radius:8px;overflow:hidden;margin-bottom:24px;font-size:13px;">
+        <tr style="background:#F4F8F5;">
+          <td style="padding:8px 14px;font-weight:600;color:#16211C;border-bottom:1px solid #E2E8E4;width:40%;">Column</td>
+          <td style="padding:8px 14px;color:#5F6E66;border-bottom:1px solid #E2E8E4;">Description</td>
+        </tr>
+        <tr><td style="padding:8px 14px;font-family:monospace;color:#1F9E88;border-bottom:1px solid #F4F8F5;">sequence</td><td style="padding:8px 14px;color:#5F6E66;border-bottom:1px solid #F4F8F5;">Original input sequence</td></tr>
+        <tr><td style="padding:8px 14px;font-family:monospace;color:#1F9E88;border-bottom:1px solid #F4F8F5;background:#FAFCFB;">predicted_class</td><td style="padding:8px 14px;color:#5F6E66;border-bottom:1px solid #F4F8F5;background:#FAFCFB;">Non-EV · Milk-based EV · Plant-based EV</td></tr>
+        <tr><td style="padding:8px 14px;font-family:monospace;color:#1F9E88;border-bottom:1px solid #F4F8F5;">confidence</td><td style="padding:8px 14px;color:#5F6E66;border-bottom:1px solid #F4F8F5;">Model confidence (0–1) for the top class</td></tr>
+        <tr><td style="padding:8px 14px;font-family:monospace;color:#1F9E88;border-bottom:1px solid #F4F8F5;background:#FAFCFB;">non_ev_prob</td><td style="padding:8px 14px;color:#5F6E66;border-bottom:1px solid #F4F8F5;background:#FAFCFB;">Probability for Non-EV class</td></tr>
+        <tr><td style="padding:8px 14px;font-family:monospace;color:#1F9E88;border-bottom:1px solid #F4F8F5;">milk_ev_prob</td><td style="padding:8px 14px;color:#5F6E66;border-bottom:1px solid #F4F8F5;">Probability for Milk-based EV class</td></tr>
+        <tr><td style="padding:8px 14px;font-family:monospace;color:#1F9E88;border-bottom:1px solid #F4F8F5;background:#FAFCFB;">plant_ev_prob</td><td style="padding:8px 14px;color:#5F6E66;border-bottom:1px solid #F4F8F5;background:#FAFCFB;">Probability for Plant-based EV class</td></tr>
+        <tr><td style="padding:8px 14px;font-family:monospace;color:#D98A46;">error</td><td style="padding:8px 14px;color:#5F6E66;">Non-empty if this sequence could not be processed</td></tr>
+      </table>
+ 
+      <p style="margin:0;font-size:12px;color:#8A97A6;line-height:1.5;">
+        Questions about your results? Contact us at
+        <a href="mailto:bagler+multiev@iiitd.ac.in" style="color:#1F9E88;">bagler+multiev@iiitd.ac.in</a>.
+      </p>
+    `),
     attachments: [
       {
         filename: resultFilename,
@@ -288,22 +322,53 @@ const sendAdminNotification = async (
   sequenceCount: number
 ) => {
   const adminEmail = process.env.ADMIN_EMAIL || process.env.SMTP_USER!;
-
+  const submittedAt = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short" });
+ 
   await transporter.sendMail({
-    from: `"multiev Jobs" <${process.env.SMTP_USER}>`,
+    from: `"MultiEV Jobs" <${process.env.SMTP_USER}>`,
     to: adminEmail,
-    subject: `[multiev] New Batch Job from ${userName}`,
-    html: `
-      <div style="font-family:Arial,sans-serif;max-width:600px;">
-        <h2>New Batch Prediction Job</h2>
-        <p><strong>Submitted by:</strong> ${userName} &lt;${userEmail}&gt;</p>
-        <p><strong>File:</strong> ${filename}</p>
-        <p><strong>Sequences:</strong> ${sequenceCount}</p>
-        <p><strong>Submitted at:</strong> ${new Date().toISOString()}</p>
-        <hr/>
-        <p>The system is processing this job automatically and will email results to <a href="mailto:${userEmail}">${userEmail}</a>.</p>
-      </div>
-    `,
+    subject: `[MultiEV] New Batch Job — ${userName} (${sequenceCount} sequences)`,
+    html: emailShell(`
+      <h2 style="margin:0 0 8px;font-size:20px;font-weight:700;color:#16211C;">
+        New Batch Job Submitted
+      </h2>
+      <p style="margin:0 0 24px;font-size:14px;color:#5F6E66;">
+        The system is processing this job automatically. Results will be emailed to the user on completion.
+      </p>
+ 
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#F4F8F5;border:1px solid #E2E8E4;border-radius:8px;margin-bottom:24px;font-size:14px;">
+        <tr>
+          <td style="padding:10px 20px;border-bottom:1px solid #E2E8E4;">
+            <p style="margin:0;font-size:11px;text-transform:uppercase;letter-spacing:0.15em;color:#8A97A6;">Submitted by</p>
+            <p style="margin:4px 0 0;font-weight:600;color:#16211C;">
+              ${userName} &lt;<a href="mailto:${userEmail}" style="color:#1F9E88;text-decoration:none;">${userEmail}</a>&gt;
+            </p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:10px 20px;border-bottom:1px solid #E2E8E4;">
+            <p style="margin:0;font-size:11px;text-transform:uppercase;letter-spacing:0.15em;color:#8A97A6;">File</p>
+            <p style="margin:4px 0 0;font-weight:600;color:#16211C;">${filename}</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:10px 20px;border-bottom:1px solid #E2E8E4;">
+            <p style="margin:0;font-size:11px;text-transform:uppercase;letter-spacing:0.15em;color:#8A97A6;">Sequences</p>
+            <p style="margin:4px 0 0;font-weight:600;color:#16211C;">${sequenceCount}</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:10px 20px;">
+            <p style="margin:0;font-size:11px;text-transform:uppercase;letter-spacing:0.15em;color:#8A97A6;">Submitted at</p>
+            <p style="margin:4px 0 0;font-weight:600;color:#16211C;">${submittedAt} IST</p>
+          </td>
+        </tr>
+      </table>
+ 
+      <p style="margin:0;font-size:12px;color:#8A97A6;">
+        The original file is attached for reference.
+      </p>
+    `),
     attachments: [
       {
         filename,
@@ -313,7 +378,6 @@ const sendAdminNotification = async (
     ],
   });
 };
-
 // ── Controller ─────────────────────────────────────────────────────────────────
 export const submitBatchJob = async (
   req: Request,
