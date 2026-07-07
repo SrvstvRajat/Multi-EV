@@ -318,26 +318,27 @@ const sendUserResults = async (
   });
 };
 
-// ── Helper: notify user if batch processing fails outright ────────────────────
-const sendUserFailureNotification = async (
+// ── Helper: notify admin if batch processing fails outright ────────────────────
+const sendAdminFailureNotification = async (
   transporter: nodemailer.Transporter,
   toEmail: string,
-  toName: string,
+  userEmail: string,
   filename: string,
   errorMessage: string
 ) => {
   await transporter.sendMail({
     from: `"FoodEVPred" <${process.env.SMTP_USER}>`,
     to: toEmail,
-    subject: "FoodEVPred — There was a problem with your batch job",
+    subject: `FoodEVPred — There was a problem with ${userEmail} batch job`,
     html: emailShell(`
       <h2 style="margin:0 0 8px;font-size:20px;font-weight:700;color:#16211C;">
-        Sorry, ${toName} — your batch job didn't complete.
+        Batch job for user ${userEmail} didn't complete.
       </h2>
       <p style="margin:0 0 24px;font-size:15px;color:#5F6E66;line-height:1.6;">
         We weren't able to finish processing <strong style="color:#16211C;">${filename}</strong>.
         This can happen if the prediction service is under heavy load or a request took
         longer than expected. No results were generated for this job.
+        error was ${errorMessage}
       </p>
 
       <div style="border-left:3px solid #D98A46;padding:12px 16px;background:#FBF3EA;border-radius:0 6px 6px 0;margin-bottom:24px;">
@@ -355,6 +356,45 @@ const sendUserFailureNotification = async (
     `),
   });
 };
+
+
+// const sendUserFailureNotification = async (
+//   transporter: nodemailer.Transporter,
+//   toEmail: string,
+//   userEmail: string,
+//   toName: string,
+//   filename: string,
+//   errorMessage: string
+// ) => {
+//   await transporter.sendMail({
+//     from: `"FoodEVPred" <${process.env.SMTP_USER}>`,
+//     to: toEmail,
+//     subject: `FoodEVPred — There was a problem with ${userEmail} batch job`,
+//     html: emailShell(`
+//       <h2 style="margin:0 0 8px;font-size:20px;font-weight:700;color:#16211C;">
+//         T batch job didn't complete.
+//       </h2>
+//       <p style="margin:0 0 24px;font-size:15px;color:#5F6E66;line-height:1.6;">
+//         We weren't able to finish processing <strong style="color:#16211C;">${filename}</strong>.
+//         This can happen if the prediction service is under heavy load or a request took
+//         longer than expected. No results were generated for this job.
+//       </p>
+
+//       <div style="border-left:3px solid #D98A46;padding:12px 16px;background:#FBF3EA;border-radius:0 6px 6px 0;margin-bottom:24px;">
+//         <p style="margin:0;font-size:13px;color:#16211C;line-height:1.6;">
+//           <strong>What you can do:</strong> please try resubmitting your job. If it fails
+//           again, splitting your file into smaller batches (e.g. 10–15 sequences) often
+//           helps, or you can reply to this email and we'll take a look.
+//         </p>
+//       </div>
+
+//       <p style="margin:0;font-size:12px;color:#8A97A6;line-height:1.5;">
+//         Questions? Contact us at
+//         <a href="mailto:bagler+foodevpred@iiitd.ac.in" style="color:#1F9E88;">bagler+foodevpred@iiitd.ac.in</a>.
+//       </p>
+//     `),
+//   });
+// };
 
 // ── Helper: send job notification to admin ─────────────────────────────────────
 const sendAdminNotification = async (
@@ -502,10 +542,12 @@ export const submitBatchJob = async (
       } catch (err: any) {
         console.error(`[BatchJob] Failed to process/send results for ${email} (${originalname}):`, err);
         try {
-          await sendUserFailureNotification(transporter, email, name, originalname, err.message || "Unknown error");
+          const adminEmail = process.env.ADMIN_EMAIL || process.env.SMTP_USER!;
+          await sendAdminFailureNotification(transporter, adminEmail, name, originalname, err.message || "Unknown error");
         } catch (notifyErr) {
+          const adminEmail = process.env.ADMIN_EMAIL || process.env.SMTP_USER!;
           // If even the failure email can't be sent, this is the last line of visibility.
-          console.error(`[BatchJob] Also failed to send failure notification to ${email}:`, notifyErr);
+          console.error(`[BatchJob] Also failed to send failure notification to ${adminEmail}:`, notifyErr);
         }
       }
     })();
