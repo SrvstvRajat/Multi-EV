@@ -1,6 +1,7 @@
 import React from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-
+// @ts-ignore: allow side-effect CSS import without type declarations
+import "./fonts.css";
 import Header from "./components/Layout/Header";
 import Footer from "./components/Layout/Footer";
 

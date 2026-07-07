@@ -10,6 +10,15 @@ const NAV_LINKS = [
   { to: "/contact", label: "Contact" },
 ];
 
+const renderNavLabel = (label: string) =>
+  label === "FAQs" ? (
+    <>
+      FAQ<span className="normal-case">s</span>
+    </>
+  ) : (
+    label
+  );
+
 const T = {
   ink: "#F4F8F5",
   text: "#16211C",
@@ -51,7 +60,7 @@ const Header: React.FC = () => {
             FEP
           </div>
           <div className="flex flex-col leading-none">
-            <span className="font-display text-[15px] font-semibold" style={{ color: T.text }}>FoodEVPred</span>
+            <span className="font-serif text-[15px] font-semibold" style={{ color: T.text }}>FoodEVPred</span>
           </div>
         </NavLink>
 
@@ -67,7 +76,7 @@ const Header: React.FC = () => {
             >
               {({ isActive }: { isActive: boolean }) => (
                 <>
-                  {label}
+                  {renderNavLabel(label)}
                   {isActive && (
                     <span
                       className="absolute left-0 right-0 -bottom-0.5 h-[2px] rounded-full"
@@ -132,7 +141,7 @@ const Header: React.FC = () => {
                   background: isActive ? T.hairlineStrong : "transparent",
                 })}
               >
-                {label}
+                {renderNavLabel(label)}
               </NavLink>
             ))}
             <a

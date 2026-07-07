@@ -4,8 +4,6 @@ import {
   Github,
   Linkedin,
   Twitter,
-  Facebook,
-  Instagram,
   Mail,
   Phone,
   MapPin,
@@ -22,7 +20,7 @@ const T = {
 const Footer: React.FC = () => {
   return (
     <footer
-      className="mt-20 font-body"
+      className="mt-20 font-serif"
       style={{
         marginTop: "0rem",
         background: T.ink,
@@ -44,7 +42,7 @@ const Footer: React.FC = () => {
                 FEP
               </div>
               <div>
-                <span className="font-display text-xl font-semibold block leading-none" style={{ color: T.text }}>
+                <span className="font-serif text-xl font-semibold block leading-none" style={{ color: T.text }}>
                   FoodEVPred
                 </span>
               </div>
@@ -123,7 +121,7 @@ const Footer: React.FC = () => {
 
             <ul className="space-y-4">
               <li>
-                <p className="font-display text-sm font-semibold" style={{ color: T.text }}>
+                <p className="font-serif text-sm font-semibold" style={{ color: T.text }}>
                   Prof. Ganesh Bagler
                 </p>
                 <p className="text-sm" style={{ color: "rgba(241,244,249,0.65)" }}>

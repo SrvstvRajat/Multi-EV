@@ -14,14 +14,6 @@ const T = {
   amber: "#D98A46",
 };
 
-const FontLoader: React.FC = () => (
-  <style>{`
-    @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
-    .font-display { font-family: 'Space Grotesk', sans-serif; }
-    .font-body { font-family: 'Inter', sans-serif; }
-    .font-mono { font-family: 'IBM Plex Mono', monospace; }
-  `}</style>
-);
 
 type HelpTab = "sequence" | "batchFile";
 
@@ -45,7 +37,7 @@ const ImageBox: React.FC<{ label: string; Icon: React.ElementType; img: string }
   <div className="rounded-2xl overflow-hidden" style={{ background: T.surface, border: `1px solid ${T.hairline}` }}>
     <div className="px-6 py-4 flex items-center gap-2.5" style={{ borderBottom: `1px solid ${T.hairline}` }}>
       <Icon size={16} style={{ color: T.primary }} />
-      <h3 className="font-display text-sm font-semibold" style={{ color: T.text }}>{label}</h3>
+      <h3 className="font-serif text-sm font-semibold" style={{ color: T.text }}>{label}</h3>
     </div>
     <div className="p-4">
       <img src={img} alt={label} className="w-full h-auto object-contain rounded-lg" />
@@ -64,8 +56,7 @@ const HowToUse: React.FC = () => {
   ];
 
   return (
-    <div style={{ background: T.ink }} className="min-h-screen font-body">
-      <FontLoader />
+    <div style={{ background: T.ink }} className="min-h-screen font-serif">
       <main className="max-w-6xl mx-auto px-5 py-14">
 
         <div className="grid lg:grid-cols-4 gap-6">
@@ -99,7 +90,7 @@ const HowToUse: React.FC = () => {
               <>
                 <ImageBox label="Single Protein Prediction" Icon={FileText} img={SequenceImg} />
                 <div className="rounded-2xl p-6" style={{ background: T.surface, border: `1px solid ${T.hairline}` }}>
-                  <h3 className="font-display text-sm font-semibold mb-4" style={{ color: T.text }}>Steps</h3>
+                  <h3 className="font-serif text-sm font-semibold mb-4" style={{ color: T.text }}>Steps</h3>
                   <ol className="space-y-3.5">
                     {[
                       "Navigate to the Predict page and select the \"Single Sequence\" tab.",
@@ -118,7 +109,7 @@ const HowToUse: React.FC = () => {
               <>
                 <ImageBox label="Batch File Processing" Icon={Mail} img={BatchFileImg} />
                 <div className="rounded-2xl p-6" style={{ background: T.surface, border: `1px solid ${T.hairline}` }}>
-                  <h3 className="font-display text-sm font-semibold mb-4" style={{ color: T.text }}>Steps</h3>
+                  <h3 className="font-serif text-sm font-semibold mb-4" style={{ color: T.text }}>Steps</h3>
                   <ol className="space-y-3.5">
                     {[
                       "Navigate to the Predict page and select the \"Batch File\" tab.",

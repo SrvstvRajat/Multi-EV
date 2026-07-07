@@ -11,19 +11,10 @@ const T = {
   primaryDim: "rgba(31,158,136,0.10)",
 };
 
-const FontLoader: React.FC = () => (
-  <style>{`
-    @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
-    .font-display { font-family: 'Space Grotesk', sans-serif; }
-    .font-body { font-family: 'Inter', sans-serif; }
-    .font-mono { font-family: 'IBM Plex Mono', monospace; }
-  `}</style>
-);
 
 const Contact: React.FC = () => {
   return (
-    <div style={{ background: T.ink }} className="min-h-screen font-body">
-      <FontLoader />
+    <div style={{ background: T.ink }} className="min-h-screen font-serif">
       <main className="max-w-6xl mx-auto px-5 py-14">
 
         {/* Header */}
@@ -32,7 +23,7 @@ const Contact: React.FC = () => {
             <Send size={11} className="inline mr-1.5 -mt-0.5" />
             Get in touch
           </p>
-          <h1 className="font-display text-4xl font-semibold tracking-tight mb-2" style={{ color: T.text }}>
+          <h1 className="font-serif text-4xl font-semibold tracking-tight mb-2" style={{ color: T.text }}>
             Contact us
           </h1>
           <p style={{ color: T.muted }}>Reach out with questions, collaborations, or feedback.</p>
@@ -42,7 +33,7 @@ const Contact: React.FC = () => {
 
           {/* Info Card */}
           <div className="rounded-2xl p-8" style={{ background: "#12211C", color: "rgba(241,244,249,0.7)" }}>
-            <h2 className="font-display text-lg font-semibold mb-8" style={{ color: "#F1F4F9" }}>
+            <h2 className="font-serif text-lg font-semibold mb-8" style={{ color: "#F1F4F9" }}>
               Contact information
             </h2>
 
@@ -105,7 +96,7 @@ const Contact: React.FC = () => {
             </div>
 
             <div className="mt-10 pt-8" style={{ borderTop: "1px solid rgba(241,244,249,0.08)" }}>
-              <p className="font-display text-sm font-semibold" style={{ color: "#F1F4F9" }}>Professor Ganesh Bagler</p>
+              <p className="font-serif text-sm font-semibold" style={{ color: "#F1F4F9" }}>Professor Ganesh Bagler</p>
               <p className="text-xs mt-0.5 mb-3" style={{ color: "rgba(241,244,249,0.4)" }}>
                   <b>HOD, Computational Biology Department</b>
               </p>

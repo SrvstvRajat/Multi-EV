@@ -1,5 +1,5 @@
-import React, { useState } from "react";
 import { Search, ChevronDown, HelpCircle } from "lucide-react";
+import { useState } from "react";
 
 const T = {
   ink: "#F4F8F5",
@@ -11,14 +11,6 @@ const T = {
   primaryDim: "rgba(31,158,136,0.10)",
 };
 
-const FontLoader: React.FC = () => (
-  <style>{`
-    @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
-    .font-display { font-family: 'Space Grotesk', sans-serif; }
-    .font-body { font-family: 'Inter', sans-serif; }
-    .font-mono { font-family: 'IBM Plex Mono', monospace; }
-  `}</style>
-);
 
 type FAQItem = { q: string; a: React.ReactNode };
 
@@ -29,10 +21,10 @@ const faqs: FAQItem[] = [
       <div className="text-sm leading-relaxed space-y-2" style={{ color: T.muted }}>
         <p>FoodEVPred offers sequence-based classification of food-derived extracellular vesicle (EV) cargo proteins:</p>
         <ul className="list-disc pl-5 space-y-1">
-          <li>Real-time single protein sequence prediction with confidence scores</li>
-          <li>Batch-mode prediction for multiple sequences via file upload (up to 50 per batch)</li>
-          <li>Classification into three biologically distinct categories: Milk EV, Plant EV, and Non-EV</li>
-          <li>A public web server for both real-time and batch-mode analysis</li>
+          <li>Real-time single protein sequence prediction with confidence scores.</li>
+          <li>Batch-mode prediction for multiple sequences via file upload (up to 50 per batch).</li>
+          <li>Classification into three biologically distinct categories: Milk EV, Plant EV, and Non-EV.</li>
+          <li>A public web server for both real-time and batch-mode analysis.</li>
         </ul>
       </div>
     ),
@@ -54,9 +46,9 @@ const faqs: FAQItem[] = [
         </p>
         <p>One-vs-rest performance per class:</p>
         <ul className="list-disc pl-5 space-y-1">
-          <li><strong>EV vs. Non-EV:</strong> 89.80% ± 0.93% accuracy, 96.64% ± 0.57% AUC</li>
-          <li><strong>Milk EV vs. Non-EV:</strong> 87.52% ± 1.21% accuracy, 94.39% ± 0.76% AUC</li>
-          <li><strong>Plant EV vs. Non-EV:</strong> 97.62% ± 0.39% accuracy, 99.74% ± 0.07% AUC</li>
+          <li><strong>EV vs. Non-EV:</strong> 89.80% ± 0.93% accuracy, 96.64% ± 0.57% AUC.</li>
+          <li><strong>Milk EV vs. Non-EV:</strong> 87.52% ± 1.21% accuracy, 94.39% ± 0.76% AUC.</li>
+          <li><strong>Plant EV vs. Non-EV:</strong> 97.62% ± 0.39% accuracy, 99.74% ± 0.07% AUC.</li>
         </ul>
       </div>
     ),
@@ -67,9 +59,9 @@ const faqs: FAQItem[] = [
       <div className="text-sm leading-relaxed space-y-2" style={{ color: T.muted }}>
         <p>The classifier distinguishes three biologically distinct categories, trained on 6,353 non-redundant protein sequences curated from an initial set of 11,788:</p>
         <ul className="list-disc pl-5 space-y-1">
-          <li><strong>Milk EV:</strong> Cargo proteins from animal milk-derived extracellular vesicles</li>
-          <li><strong>Plant EV:</strong> Cargo proteins from plant-derived extracellular vesicles</li>
-          <li><strong>Non-EV:</strong> Food proteins with no EV cargo signature</li>
+          <li><strong>Milk EV:</strong> Cargo proteins from animal milk-derived extracellular vesicles.</li>
+          <li><strong>Plant EV:</strong> Cargo proteins from plant-derived extracellular vesicles.</li>
+          <li><strong>Non-EV:</strong> Food proteins with no EV cargo signature.</li>
         </ul>
       </div>
     ),
@@ -138,13 +130,12 @@ const FAQs: React.FC = () => {
   );
 
   return (
-    <div style={{ background: T.ink }} className="min-h-screen font-body">
-      <FontLoader />
+    <div style={{ background: T.ink }} className="min-h-screen font-serif">
       <main className="max-w-3xl mx-auto px-5 py-14">
 
         {/* Header */}
         <div className="mb-10">
-          <h1 className="font-display text-4xl font-semibold tracking-tight mb-2" style={{ color: T.text }}>
+          <h1 className="font-serif text-4xl font-semibold tracking-tight mb-2" style={{ color: T.text }}>
             Frequently Asked Questions
           </h1>
           <p style={{ color: T.muted }}>Find answers to common questions about FoodEVPred.</p>
