@@ -56,18 +56,25 @@ const extractSmiles = (buffer: Buffer, filename: string): string[] => {
 
 const runPredictions = async (smilesList: string[]): Promise<PredictionResult[]> => {
   const ML_URL = process.env.ML_SERVICE_URL || "http://localhost:8000";
-  // Override via ML_TIMEOUT_MS in .env.
-  const ML_TIMEOUT = parseInt(process.env.ML_TIMEOUT_MS || "300000", 10);
+  // Per-sequence budget — override via ML_PER_SEQUENCE_TIMEOUT_MS in .env.
+  // Default assumes worst-case ~1 min/sequence on CPU (matches the UI's own copy:
+  // "CPU inference can take up to a minute for longer sequences"), plus headroom.
+  const PER_SEQUENCE_TIMEOUT_MS = parseInt(process.env.ML_PER_SEQUENCE_TIMEOUT_MS || "90000", 10); // 90s/sequence
+  const FIXED_OVERHEAD_MS = parseInt(process.env.ML_TIMEOUT_MS || "60000", 10); // model load, network, etc.
   const CHUNK_SIZE = 50; // matches app.py BatchRequest max
   const results: PredictionResult[] = [];
 
   for (let i = 0; i < smilesList.length; i += CHUNK_SIZE) {
     const chunk = smilesList.slice(i, i + CHUNK_SIZE);
+    // Scale the timeout to how many sequences are actually in THIS request —
+    // a flat timeout (e.g. 15 min) silently kills large batches before the
+    // ML service is done, since it processes the whole chunk as one call.
+    const requestTimeout = chunk.length * PER_SEQUENCE_TIMEOUT_MS + FIXED_OVERHEAD_MS;
     try {
       const { data } = await axios.post(
         `${ML_URL}/predict/batch`,
         { sequences: chunk },
-        { timeout: ML_TIMEOUT * 3 }
+        { timeout: requestTimeout }
       );
 
       if (!data.results || !Array.isArray(data.results)) {
@@ -311,6 +318,44 @@ const sendUserResults = async (
   });
 };
 
+// ── Helper: notify user if batch processing fails outright ────────────────────
+const sendUserFailureNotification = async (
+  transporter: nodemailer.Transporter,
+  toEmail: string,
+  toName: string,
+  filename: string,
+  errorMessage: string
+) => {
+  await transporter.sendMail({
+    from: `"FoodEVPred" <${process.env.SMTP_USER}>`,
+    to: toEmail,
+    subject: "FoodEVPred — There was a problem with your batch job",
+    html: emailShell(`
+      <h2 style="margin:0 0 8px;font-size:20px;font-weight:700;color:#16211C;">
+        Sorry, ${toName} — your batch job didn't complete.
+      </h2>
+      <p style="margin:0 0 24px;font-size:15px;color:#5F6E66;line-height:1.6;">
+        We weren't able to finish processing <strong style="color:#16211C;">${filename}</strong>.
+        This can happen if the prediction service is under heavy load or a request took
+        longer than expected. No results were generated for this job.
+      </p>
+
+      <div style="border-left:3px solid #D98A46;padding:12px 16px;background:#FBF3EA;border-radius:0 6px 6px 0;margin-bottom:24px;">
+        <p style="margin:0;font-size:13px;color:#16211C;line-height:1.6;">
+          <strong>What you can do:</strong> please try resubmitting your job. If it fails
+          again, splitting your file into smaller batches (e.g. 10–15 sequences) often
+          helps, or you can reply to this email and we'll take a look.
+        </p>
+      </div>
+
+      <p style="margin:0;font-size:12px;color:#8A97A6;line-height:1.5;">
+        Questions? Contact us at
+        <a href="mailto:bagler+foodevpred@iiitd.ac.in" style="color:#1F9E88;">bagler+foodevpred@iiitd.ac.in</a>.
+      </p>
+    `),
+  });
+};
+
 // ── Helper: send job notification to admin ─────────────────────────────────────
 const sendAdminNotification = async (
   transporter: nodemailer.Transporter,
@@ -454,8 +499,14 @@ export const submitBatchJob = async (
         const csv = buildResultsCsv(predictions);
         await sendUserResults(transporter, email, name, originalname, csv);
         console.log(`[BatchJob] Results sent to ${email} for job: ${originalname}`);
-      } catch (err) {
+      } catch (err: any) {
         console.error(`[BatchJob] Failed to process/send results for ${email} (${originalname}):`, err);
+        try {
+          await sendUserFailureNotification(transporter, email, name, originalname, err.message || "Unknown error");
+        } catch (notifyErr) {
+          // If even the failure email can't be sent, this is the last line of visibility.
+          console.error(`[BatchJob] Also failed to send failure notification to ${email}:`, notifyErr);
+        }
       }
     })();
 
