@@ -16,8 +16,8 @@ node_modules/
 .env
 # .env.*
 
-# .pkl*
-*.pkl
+# # .pkl*
+# *.pkl
 *.pth
 #misc
 
